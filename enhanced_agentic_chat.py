@@ -148,6 +148,20 @@ class EnhancedAgenticS3Chat:
                         }
                     }
                 }
+            },
+            {
+                "toolSpec": {
+                    "name": "find_smallest_bucket",
+                    "description": "Find the bucket with the least storage usage",
+                    "inputSchema": {"json": {"type": "object", "properties": {}}}
+                }
+            },
+            {
+                "toolSpec": {
+                    "name": "find_largest_bucket", 
+                    "description": "Find the bucket with the most storage usage",
+                    "inputSchema": {"json": {"type": "object", "properties": {}}}
+                }
             }
         ]
     
@@ -284,11 +298,97 @@ class EnhancedAgenticS3Chat:
                         return {"bucket": bucket_name, "encryption": "Disabled"}
                 except:
                     return {"bucket": bucket_name, "encryption": "Not configured"}
+            
+            elif tool_name == "find_smallest_bucket":
+                response = self.s3.list_buckets()
+                all_buckets = [b["Name"] for b in response.get("Buckets", [])]
+                
+                if not all_buckets:
+                    return {"error": "No buckets found"}
+                
+                smallest_bucket = None
+                smallest_size = float('inf')
+                
+                for bucket in all_buckets:
+                    if bucket not in self.bucket_cache:
+                        result = app.invoke({"bucket": bucket})
+                        self.bucket_cache[bucket] = result.get("report", {})
+                    
+                    report = self.bucket_cache[bucket]
+                    size = report.get("total_size", 0)
+                    
+                    if size < smallest_size:
+                        smallest_size = size
+                        smallest_bucket = bucket
+                
+                if smallest_bucket:
+                    report = self.bucket_cache[smallest_bucket]
+                    return {
+                        "bucket": smallest_bucket,
+                        "size": smallest_size,
+                        "size_readable": self._format_size(smallest_size),
+                        "object_count": report.get("object_count", 0),
+                        "storage_classes": report.get("storage_classes", {}),
+                        "lifecycle_rules": report.get("lifecycle_rules", [])
+                    }
+                return {"error": "Could not determine smallest bucket"}
+            
+            elif tool_name == "find_largest_bucket":
+                response = self.s3.list_buckets()
+                all_buckets = [b["Name"] for b in response.get("Buckets", [])]
+                
+                if not all_buckets:
+                    return {"error": "No buckets found"}
+                
+                largest_bucket = None
+                largest_size = 0
+                
+                for bucket in all_buckets:
+                    if bucket not in self.bucket_cache:
+                        result = app.invoke({"bucket": bucket})
+                        self.bucket_cache[bucket] = result.get("report", {})
+                    
+                    report = self.bucket_cache[bucket]
+                    size = report.get("total_size", 0)
+                    
+                    if size > largest_size:
+                        largest_size = size
+                        largest_bucket = bucket
+                
+                if largest_bucket:
+                    report = self.bucket_cache[largest_bucket]
+                    return {
+                        "bucket": largest_bucket,
+                        "size": largest_size,
+                        "size_readable": self._format_size(largest_size),
+                        "object_count": report.get("object_count", 0),
+                        "storage_classes": report.get("storage_classes", {}),
+                        "lifecycle_rules": report.get("lifecycle_rules", [])
+                    }
+                return {"error": "Could not determine largest bucket"}
                 
         except Exception as e:
             logger.error(f"Tool execution failed for {tool_name}: {e}")
             return {"error": str(e)}
     
+    def _format_size(self, bytes_size: int) -> str:
+        """Convert bytes to human-readable format."""
+        if bytes_size == 0:
+            return "0 bytes"
+        
+        units = ['bytes', 'KB', 'MB', 'GB', 'TB']
+        size = float(bytes_size)
+        unit_index = 0
+        
+        while size >= 1024 and unit_index < len(units) - 1:
+            size /= 1024
+            unit_index += 1
+        
+        if unit_index == 0:
+            return f"{int(size)} {units[unit_index]}"
+        else:
+            return f"{size:.1f} {units[unit_index]}"
+
     def _format_response(self, text: str) -> str:
         """Remove markdown and format for display."""
         if not text:
@@ -316,27 +416,32 @@ class EnhancedAgenticS3Chat:
         # Simple greeting
         greetings = ['hello', 'hi', 'hey']
         if any(greeting in query.lower() for greeting in greetings) and len(query.split()) <= 3:
-            return "Hello! Ask me about your S3 buckets."
+            return "Hello! Ask me about your S3 needs"
 
         messages = [
             {
                 "role": "user",
                 "content": [
                     {
-                        "text": f"""Analyze S3 data and answer the user's question directly. Use tools to gather information.
+                        "text": f"""You are a helpful S3 assistant. Answer the user's question naturally and conversationally. Use tools to gather data but NEVER mention that you're using tools or analyzing data.
 
-RULES:
-- Answer directly, don't explain your role or capabilities
-- Use plain text only, no markdown formatting
-- Be concise and factual
-- Use this format for analysis:
+PERSONALITY:
+- Be friendly and direct, like a knowledgeable colleague
+- Never mention "tools", "analysis", "data gathering", or technical processes
+- Just provide the answer as if you already knew it
+- Use natural phrases like "I found", "Here's", "Looking at", "It appears"
 
-"Analysis of bucket [name]:
-- Bucket Name: [name]
-- Total Size: [size] bytes ([readable size])
-- Object Count: [count]
-- Storage Classes: [details]
-- Lifecycle Rules: [rules or None]"
+RESPONSE STYLE:
+- Start directly with the answer
+- Use human-readable sizes (1.3 KB, 2.1 MB, 45 GB)
+- Be conversational but informative
+- Make it sound effortless and natural
+
+EXAMPLES:
+❌ BAD: "The analyze_bucket tool has provided information..."
+❌ BAD: "I should summarize this information..."
+✅ GOOD: "Here's your smallest bucket! It's 'my-tiny-bucket' with just 1.3 KB..."
+✅ GOOD: "Looking at your buckets, the largest one is 'prod-data' with 45 GB of storage..."
 
 Question: {query}"""
                     }
