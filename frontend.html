@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Agentic S3 Chat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 800px;
+            height: 80vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .status-bar {
+            background: #f8f9fa;
+            padding: 10px 20px;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #6c757d;
+        }
+
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+        }
+
+        .message.user .message-content {
+            background: #007bff;
+            color: white;
+        }
+
+        .message.assistant .message-content {
+            background: white;
+            border: 1px solid #e9ecef;
+            color: #333;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            margin: 0 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .message.user .message-avatar {
+            background: #007bff;
+            color: white;
+        }
+
+        .message.assistant .message-avatar {
+            background: #28a745;
+            color: white;
+        }
+
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #dee2e6;
+            border-radius: 25px;
+            outline: none;
+            font-size: 14px;
+        }
+
+        #messageInput:focus {
+            border-color: #28a745;
+            box-shadow: 0 0 0 2px rgba(40,167,69,0.25);
+        }
+
+        #sendBtn {
+            padding: 12px 20px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        #sendBtn:hover:not(:disabled) {
+            background: #218838;
+        }
+
+        #sendBtn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        .examples {
+            margin-top: 10px;
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .example-btn {
+            padding: 4px 8px;
+            background: #e9ecef;
+            border: none;
+            border-radius: 12px;
+            font-size: 11px;
+            cursor: pointer;
+            color: #495057;
+            transition: background 0.2s;
+        }
+
+        .example-btn:hover {
+            background: #dee2e6;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            border: 1px solid #f5c6cb;
+        }
+
+        .tool-indicator {
+            background: #d4edda;
+            color: #155724;
+            padding: 5px 10px;
+            border-radius: 10px;
+            font-size: 11px;
+            margin-bottom: 5px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 Enhanced Agentic S3 Chat</h1>
+            <p>AI-powered S3 analysis with intelligent tool calling</p>
+        </div>
+        
+        <div class="status-bar">
+            <span id="statusText">Ready</span>
+            <span id="cacheInfo">Cache: 0 buckets</span>
+        </div>
+
+        <div class="chat-container">
+            <div class="messages" id="messages">
+                <div class="message assistant">
+                    <div class="message-avatar">🤖</div>
+                    <div class="message-content">
+                        <div class="tool-indicator">🔧 Enhanced Mode with Tool Calling</div>
+                        Hi! I'm your enhanced agentic S3 assistant with intelligent tool calling capabilities. I can analyze your S3 buckets on-demand using specialized tools:
+                        <br><br>
+                        🔍 <strong>list_buckets</strong> - Get all bucket names<br>
+                        📊 <strong>analyze_bucket</strong> - Deep analysis of specific buckets<br>
+                        🔎 <strong>search_buckets</strong> - Find buckets by pattern<br><br>
+                        Just ask me questions and I'll use the right tools automatically!
+                    </div>
+                </div>
+            </div>
+            
+            <div class="loading" id="loading">
+                <div>🔧 Using tools to analyze buckets...</div>
+            </div>
+        </div>
+
+        <div class="input-area">
+            <div class="input-container">
+                <input type="text" id="messageInput" placeholder="Ask about your S3 buckets..." />
+                <button id="sendBtn">Send</button>
+            </div>
+            
+            <div class="examples">
+                <button class="example-btn" data-example="How many buckets do I have?">Bucket count</button>
+                <button class="example-btn" data-example="Which bucket uses the most storage?">Largest bucket</button>
+                <button class="example-btn" data-example="Show me all my buckets">List buckets</button>
+                <button class="example-btn" data-example="Find buckets with 'prod' in the name">Search buckets</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000';
+        
+        // DOM elements
+        const messagesContainer = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const loading = document.getElementById('loading');
+        const statusText = document.getElementById('statusText');
+        const cacheInfo = document.getElementById('cacheInfo');
+        
+        // Example buttons
+        document.querySelectorAll('.example-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                messageInput.value = btn.dataset.example;
+                sendMessage();
+            });
+        });
+        
+        // Send message
+        sendBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+        
+        function addMessage(type, content, isError = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            if (type === 'system') {
+                messageDiv.innerHTML = `<div class="message-content" style="background: #e9ecef; color: #495057; font-style: italic;">${content}</div>`;
+            } else {
+                const avatar = type === 'user' ? '👤' : '🤖';
+                const errorClass = isError ? ' error' : '';
+                // Convert line breaks to HTML and preserve formatting
+                const formattedContent = content.replace(/\n/g, '<br>');
+                messageDiv.innerHTML = `
+                    <div class="message-avatar">${avatar}</div>
+                    <div class="message-content${errorClass}">${formattedContent}</div>
+                `;
+            }
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            // Add user message
+            addMessage('user', message);
+            messageInput.value = '';
+            
+            // Show loading
+            sendBtn.disabled = true;
+            loading.style.display = 'block';
+            statusText.textContent = 'Processing...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/enhanced-chat`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ question: message })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    addMessage('assistant', `Error: ${data.error}`, true);
+                } else {
+                    addMessage('assistant', data.answer);
+                    if (data.cached_buckets !== undefined) {
+                        cacheInfo.textContent = `Cache: ${data.cached_buckets} buckets`;
+                    }
+                }
+                
+            } catch (error) {
+                addMessage('assistant', `Connection error: ${error.message}. Make sure the server is running with: python3 agentic_server.py`, true);
+            } finally {
+                sendBtn.disabled = false;
+                loading.style.display = 'none';
+                statusText.textContent = 'Ready';
+            }
+        }
+        
+        // Load status on page load
+        async function loadStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/status`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    statusText.textContent = 'Server Error';
+                    addMessage('system', `Server error: ${data.error}`, true);
+                } else {
+                    statusText.textContent = 'Connected';
+                    if (data.bucket_names) {
+                        addMessage('system', `✅ Connected to AWS. Found ${data.bucket_names.length} buckets. Enhanced mode ready with ${data.enhanced_agent.available_tools} tools.`);
+                    }
+                }
+            } catch (error) {
+                statusText.textContent = 'Disconnected';
+                addMessage('system', 'Could not connect to server. Run: python3 agentic_server.py', true);
+            }
+        }
+        
+        // Load status when page loads
+        loadStatus();
+    </script>
+</body>
+</html>
