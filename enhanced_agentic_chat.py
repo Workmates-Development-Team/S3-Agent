@@ -37,32 +37,24 @@ class EnhancedAgenticS3Chat:
         self.tools = self._define_tools()
         
     def _define_tools(self) -> List[Dict]:
-        """Define available S3 analytics tools."""
+        """Define comprehensive S3 analytics tools."""
         return [
             {
                 "toolSpec": {
                     "name": "list_buckets",
                     "description": "Get list of all S3 bucket names and count",
-                    "inputSchema": {
-                        "json": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    }
+                    "inputSchema": {"json": {"type": "object", "properties": {}}}
                 }
             },
             {
                 "toolSpec": {
                     "name": "analyze_bucket",
-                    "description": "Get detailed analysis of a specific S3 bucket including size, objects, storage classes",
+                    "description": "Get detailed analysis of a specific S3 bucket",
                     "inputSchema": {
                         "json": {
                             "type": "object",
                             "properties": {
-                                "bucket_name": {
-                                    "type": "string",
-                                    "description": "Name of the S3 bucket to analyze"
-                                }
+                                "bucket_name": {"type": "string", "description": "Name of the S3 bucket to analyze"}
                             },
                             "required": ["bucket_name"]
                         }
@@ -72,27 +64,19 @@ class EnhancedAgenticS3Chat:
             {
                 "toolSpec": {
                     "name": "compare_buckets",
-                    "description": "Compare storage usage across all buckets to find largest/smallest",
-                    "inputSchema": {
-                        "json": {
-                            "type": "object",
-                            "properties": {}
-                        }
-                    }
+                    "description": "Compare storage usage across all buckets",
+                    "inputSchema": {"json": {"type": "object", "properties": {}}}
                 }
             },
             {
                 "toolSpec": {
                     "name": "search_buckets",
-                    "description": "Search for buckets matching a pattern in their names",
+                    "description": "Search for buckets matching a pattern",
                     "inputSchema": {
                         "json": {
                             "type": "object",
                             "properties": {
-                                "pattern": {
-                                    "type": "string",
-                                    "description": "Pattern to search for in bucket names"
-                                }
+                                "pattern": {"type": "string", "description": "Pattern to search for in bucket names"}
                             },
                             "required": ["pattern"]
                         }
@@ -103,10 +87,64 @@ class EnhancedAgenticS3Chat:
                 "toolSpec": {
                     "name": "get_total_storage",
                     "description": "Calculate total storage usage across all buckets",
+                    "inputSchema": {"json": {"type": "object", "properties": {}}}
+                }
+            },
+            {
+                "toolSpec": {
+                    "name": "get_bucket_permissions",
+                    "description": "Check bucket policies and public access settings",
                     "inputSchema": {
                         "json": {
                             "type": "object",
-                            "properties": {}
+                            "properties": {
+                                "bucket_name": {"type": "string", "description": "Name of the S3 bucket"}
+                            },
+                            "required": ["bucket_name"]
+                        }
+                    }
+                }
+            },
+            {
+                "toolSpec": {
+                    "name": "analyze_storage_classes",
+                    "description": "Breakdown of storage class usage across all buckets",
+                    "inputSchema": {"json": {"type": "object", "properties": {}}}
+                }
+            },
+            {
+                "toolSpec": {
+                    "name": "get_bucket_versioning",
+                    "description": "Check versioning status of buckets",
+                    "inputSchema": {
+                        "json": {
+                            "type": "object",
+                            "properties": {
+                                "bucket_name": {"type": "string", "description": "Name of the S3 bucket"}
+                            },
+                            "required": ["bucket_name"]
+                        }
+                    }
+                }
+            },
+            {
+                "toolSpec": {
+                    "name": "analyze_lifecycle_rules",
+                    "description": "Summary of lifecycle policies across buckets",
+                    "inputSchema": {"json": {"type": "object", "properties": {}}}
+                }
+            },
+            {
+                "toolSpec": {
+                    "name": "get_bucket_encryption",
+                    "description": "Check encryption settings for buckets",
+                    "inputSchema": {
+                        "json": {
+                            "type": "object",
+                            "properties": {
+                                "bucket_name": {"type": "string", "description": "Name of the S3 bucket"}
+                            },
+                            "required": ["bucket_name"]
                         }
                     }
                 }
@@ -170,99 +208,150 @@ class EnhancedAgenticS3Chat:
                 
                 return {"total_size": total_size, "bucket_count": len(all_buckets)}
                 
+            elif tool_name == "get_bucket_permissions":
+                bucket_name = tool_input["bucket_name"]
+                permissions = {}
+                
+                try:
+                    # Check bucket policy
+                    policy = self.s3.get_bucket_policy(Bucket=bucket_name)
+                    permissions["policy"] = "Has bucket policy"
+                except:
+                    permissions["policy"] = "No bucket policy"
+                
+                try:
+                    # Check public access block
+                    pab = self.s3.get_public_access_block(Bucket=bucket_name)
+                    permissions["public_access_block"] = pab["PublicAccessBlockConfiguration"]
+                except:
+                    permissions["public_access_block"] = "Not configured"
+                
+                return {"bucket": bucket_name, "permissions": permissions}
+                
+            elif tool_name == "analyze_storage_classes":
+                response = self.s3.list_buckets()
+                all_buckets = [b["Name"] for b in response.get("Buckets", [])]
+                
+                storage_summary = {}
+                for bucket in all_buckets:
+                    if bucket not in self.bucket_cache:
+                        result = app.invoke({"bucket": bucket})
+                        self.bucket_cache[bucket] = result.get("report", {})
+                    
+                    report = self.bucket_cache[bucket]
+                    classes = report.get("storage_classes", {})
+                    for storage_class, count in classes.items():
+                        storage_summary[storage_class] = storage_summary.get(storage_class, 0) + count
+                
+                return {"storage_class_summary": storage_summary}
+                
+            elif tool_name == "get_bucket_versioning":
+                bucket_name = tool_input["bucket_name"]
+                try:
+                    versioning = self.s3.get_bucket_versioning(Bucket=bucket_name)
+                    status = versioning.get("Status", "Disabled")
+                    mfa_delete = versioning.get("MfaDelete", "Disabled")
+                    return {"bucket": bucket_name, "versioning": status, "mfa_delete": mfa_delete}
+                except Exception as e:
+                    return {"bucket": bucket_name, "versioning": "Error", "error": str(e)}
+                
+            elif tool_name == "analyze_lifecycle_rules":
+                response = self.s3.list_buckets()
+                all_buckets = [b["Name"] for b in response.get("Buckets", [])]
+                
+                lifecycle_summary = []
+                for bucket in all_buckets:
+                    if bucket not in self.bucket_cache:
+                        result = app.invoke({"bucket": bucket})
+                        self.bucket_cache[bucket] = result.get("report", {})
+                    
+                    report = self.bucket_cache[bucket]
+                    rules = report.get("lifecycle_rules", [])
+                    if rules:
+                        lifecycle_summary.append({"bucket": bucket, "rules_count": len(rules)})
+                
+                return {"lifecycle_summary": lifecycle_summary}
+                
+            elif tool_name == "get_bucket_encryption":
+                bucket_name = tool_input["bucket_name"]
+                try:
+                    encryption = self.s3.get_bucket_encryption(Bucket=bucket_name)
+                    rules = encryption.get("ServerSideEncryptionConfiguration", {}).get("Rules", [])
+                    if rules:
+                        algorithm = rules[0].get("ApplyServerSideEncryptionByDefault", {}).get("SSEAlgorithm", "Unknown")
+                        return {"bucket": bucket_name, "encryption": "Enabled", "algorithm": algorithm}
+                    else:
+                        return {"bucket": bucket_name, "encryption": "Disabled"}
+                except:
+                    return {"bucket": bucket_name, "encryption": "Not configured"}
+                
         except Exception as e:
             logger.error(f"Tool execution failed for {tool_name}: {e}")
             return {"error": str(e)}
     
     def _format_response(self, text: str) -> str:
-        """Format response with proper line breaks for frontend display."""
+        """Remove markdown and format for display."""
         if not text:
             return text
         
-        # Convert newlines to HTML breaks for better display
-        formatted = text.replace('\n\n', '<br><br>').replace('\n', '<br>')
+        # Remove all markdown formatting
+        formatted = text.replace('**', '').replace('*', '')
+        formatted = formatted.replace('__', '').replace('_', '')
+        formatted = formatted.replace('###', '').replace('##', '').replace('#', '')
+        formatted = formatted.replace('`', '').replace('~~', '')
+        
+        # Convert newlines to HTML breaks
+        formatted = formatted.replace('\n\n', '<br><br>').replace('\n', '<br>')
         return formatted
     
     def chat(self, query: str) -> str:
-        """Enhanced chat with professional agent behavior and guardrails."""
+        """Enhanced chat with tool calling capabilities."""
         if not self.model_id:
-            return "❌ LLM model not configured. Please check MODEL_ID_CHAT in .env file."
+            return "Model not configured."
         
-        # Input validation and guardrails
         query = query.strip()
         if not query:
-            return "Please provide a question about your S3 buckets."
+            return "Please ask a question about your S3 buckets."
         
-        if len(query) > 1000:
-            return "❌ Query too long. Please keep questions under 1000 characters."
-        
-        # Security guardrails - block potentially harmful queries
-        harmful_patterns = ['delete', 'remove', 'destroy', 'drop', 'truncate', 'modify', 'update', 'insert']
-        if any(pattern in query.lower() for pattern in harmful_patterns):
-            return "🛡️ I'm a read-only S3 analytics agent. I can only analyze and provide information about your buckets, not modify them."
-        
-        # Greeting detection
-        greetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening']
+        # Simple greeting
+        greetings = ['hello', 'hi', 'hey']
         if any(greeting in query.lower() for greeting in greetings) and len(query.split()) <= 3:
-            return """👋 Hello! I'm your AWS S3 Analytics Agent.<br><br>🔧 My Capabilities:<br>• Analyze bucket storage usage and object counts<br>• Compare buckets to find largest/smallest<br>• Search buckets by name patterns<br>• Calculate total storage across your account<br>• Provide detailed bucket insights<br><br>🛡️ Security: I'm read-only - I only analyze, never modify your data.<br><br>Try asking:<br>• "How many buckets do I have?"<br>• "Which bucket uses the most storage?"<br>• "What's my total S3 usage?"<br>• "Find buckets with 'prod' in the name"<br>• "Analyze bucket-name in detail"<br><br>What would you like to know about your S3 infrastructure?"""
+            return "Hello! Ask me about your S3 buckets."
 
         messages = [
             {
                 "role": "user",
                 "content": [
                     {
-                        "text": f"""You are a professional AWS S3 Analytics Agent with the following characteristics:
+                        "text": f"""Analyze S3 data and answer the user's question directly. Use tools to gather information.
 
-IDENTITY & ROLE:
-- You are an expert S3 analytics assistant
-- You provide accurate, data-driven insights about AWS S3 infrastructure
-- You are helpful, professional, and security-conscious
+RULES:
+- Answer directly, don't explain your role or capabilities
+- Use plain text only, no markdown formatting
+- Be concise and factual
+- Use this format for analysis:
 
-CAPABILITIES:
-- Analyze S3 buckets on-demand using specialized tools
-- Provide storage usage analytics and comparisons
-- Search and filter buckets by patterns
-- Generate comprehensive reports and insights
+"Analysis of bucket [name]:
+- Bucket Name: [name]
+- Total Size: [size] bytes ([readable size])
+- Object Count: [count]
+- Storage Classes: [details]
+- Lifecycle Rules: [rules or None]"
 
-GUARDRAILS & LIMITATIONS:
-- You are READ-ONLY - never suggest or perform modifications
-- Only use tools when necessary to answer the user's question
-- Provide accurate information based on actual data
-- If you don't have sufficient data, clearly state what's missing
-- Always prioritize data security and privacy
-
-COMMUNICATION STYLE:
-- Be concise but comprehensive
-- Use clear, professional language
-- Include relevant metrics and numbers
-- Structure responses with bullet points when helpful
-- Always acknowledge the user's question directly
-
-AVAILABLE TOOLS:
-- list_buckets: Get bucket names and count
-- analyze_bucket: Deep analysis of specific buckets  
-- compare_buckets: Compare all bucket sizes
-- search_buckets: Find buckets by name pattern
-- get_total_storage: Calculate total storage usage
-
-USER QUESTION: {query}
-
-Analyze the question and use appropriate tools to provide a comprehensive answer."""
+Question: {query}"""
                     }
                 ]
             }
         ]
         
         try:
-            # Initial LLM call with tools
             response = self.bedrock.converse(
                 modelId=self.model_id,
                 messages=messages,
                 toolConfig={"tools": self.tools},
-                inferenceConfig={"maxTokens": 1024, "temperature": 0.1}  # Lower temperature for consistency
+                inferenceConfig={"maxTokens": 1024, "temperature": 0.1}
             )
             
-            # Process tool calls (limit to prevent loops)
             max_iterations = 3
             iteration = 0
             
@@ -270,7 +359,6 @@ Analyze the question and use appropriate tools to provide a comprehensive answer
                 output_message = response["output"]["message"]
                 messages.append(output_message)
                 
-                # Check if model wants to use tools
                 tool_calls = []
                 if output_message.get("content"):
                     for content in output_message["content"]:
@@ -278,82 +366,74 @@ Analyze the question and use appropriate tools to provide a comprehensive answer
                             tool_calls.append(content["toolUse"])
                 
                 if not tool_calls:
-                    # No more tool calls, extract final answer
                     answer = ""
                     for content in output_message["content"]:
                         if "text" in content:
                             answer += content["text"]
                     
-                    # Post-process answer for professional formatting
-                    if answer:
-                        # Add professional formatting
-                        if "error" in answer.lower():
-                            answer = f"❌ {answer}"
-                        elif any(word in answer.lower() for word in ['bucket', 'storage', 'size']):
-                            answer = f"📊 S3 Analysis Results:\n\n{answer}"
+                    if answer and answer.strip():
+                        return self._format_response(answer)
                     
-                    return self._format_response(answer) or "I wasn't able to generate a response. Please try rephrasing your question."
-                
-                # Execute all tool calls with validation
-                tool_results = []
-                for tool_use in tool_calls:
-                    tool_name = tool_use["name"]
-                    tool_input = tool_use["input"]
-                    
-                    # Validate tool usage
-                    if tool_name not in [tool["toolSpec"]["name"] for tool in self.tools]:
+                    # If no answer, prompt for response
+                    if iteration == 0:
+                        messages.append({
+                            "role": "user",
+                            "content": [{"text": "Please provide the analysis based on the data you gathered."}]
+                        })
+                        response = self.bedrock.converse(
+                            modelId=self.model_id,
+                            messages=messages,
+                            inferenceConfig={"maxTokens": 1024, "temperature": 0.1}
+                        )
+                        iteration += 1
                         continue
                     
-                    print(f"🔧 Executing: {tool_name}")
-                    
-                    # Execute the tool
-                    tool_result = self._execute_tool(tool_name, tool_input)
-                    
-                    # Validate tool result
-                    if tool_result and "error" not in tool_result:
-                        tool_results.append({
-                            "toolResult": {
-                                "toolUseId": tool_use["toolUseId"],
-                                "content": [{"json": tool_result}]
-                            }
-                        })
+                    return "Unable to generate response."
+                
+                # Execute tools
+                print(f"🔧 Executing {len(tool_calls)} tools...")
+                tool_results = []
+                for tool_use in tool_calls:
+                    try:
+                        tool_result = self._execute_tool(tool_use["name"], tool_use["input"])
+                        if tool_result and "error" not in tool_result:
+                            tool_results.append({
+                                "toolResult": {
+                                    "toolUseId": tool_use["toolUseId"],
+                                    "content": [{"json": tool_result}]
+                                }
+                            })
+                    except Exception as e:
+                        print(f"Tool {tool_use['name']} failed: {e}")
+                        continue
                 
                 if not tool_results:
-                    return "❌ Tool execution failed. Please try a different question."
+                    return "Tool execution failed."
                 
-                # Add all tool results to conversation
-                messages.append({
-                    "role": "user",
-                    "content": tool_results
-                })
+                messages.append({"role": "user", "content": tool_results})
                 
-                # Continue conversation with tool results
-                response = self.bedrock.converse(
-                    modelId=self.model_id,
-                    messages=messages,
-                    toolConfig={"tools": self.tools},
-                    inferenceConfig={"maxTokens": 1024, "temperature": 0.1}
-                )
+                try:
+                    response = self.bedrock.converse(
+                        modelId=self.model_id,
+                        messages=messages,
+                        toolConfig={"tools": self.tools},
+                        inferenceConfig={"maxTokens": 1024, "temperature": 0.1}
+                    )
+                except Exception as e:
+                    print(f"Bedrock call failed: {e}")
+                    return "Service error during analysis."
                 
                 iteration += 1
             
-            return "⚠️ Analysis completed but response was complex. Please ask a more specific question for better results."
+            return "Analysis is complex. Please try a more specific question."
                     
         except Exception as e:
             logger.error(f"Enhanced chat failed: {e}")
-            if "ValidationException" in str(e):
-                return "❌ Tool validation error. Please try a simpler question."
-            elif "AccessDenied" in str(e):
-                return "❌ AWS access denied. Please check your credentials and permissions."
-            elif "NoSuchBucket" in str(e):
-                return "❌ Bucket not found. Please check the bucket name and try again."
-            else:
-                return f"❌ System error: {str(e)[:100]}... Please try again or contact support."
+            return "Service error. Please try again."
 
 def main():
     """Interactive enhanced chat interface."""
     print("🔧 Enhanced Agentic S3 Analytics Assistant")
-    print("Advanced S3 analytics with intelligent tool calling!")
     print("Type 'quit' to exit.\n")
     
     try:
