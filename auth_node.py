@@ -1,4 +1,3 @@
-# new_folder/auth_node.py
 import boto3
 import os
 from botocore.exceptions import ClientError
@@ -19,7 +18,7 @@ def auth_node(state):
             aws_secret_access_key=secret_key,
             region_name=region,
         )
-        sts.get_caller_identity()  # Test creds from env only
+        sts.get_caller_identity()  
         return {"status": "auth_ok", **state}
     except ClientError:
         return {"status": "auth_fail", **state}

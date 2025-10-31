@@ -1,4 +1,3 @@
-# new_folder/permission_node.py
 import boto3
 import os
 
@@ -16,7 +15,7 @@ def permission_node(state):
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
         region_name=region,
-    )  # Uses creds from .env only
+    )  
 
     bucket = state.get("bucket")
     try:

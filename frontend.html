@@ -152,7 +152,6 @@
             }
         }
         
-        // Load status
         fetch('/status').then(r => r.json()).then(data => {
             if (!data.error) statusText.textContent = 'Connected';
         }).catch(() => statusText.textContent = 'Disconnected');

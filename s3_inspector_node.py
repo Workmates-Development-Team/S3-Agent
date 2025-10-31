@@ -1,4 +1,3 @@
-# new_folder/s3_inspector_node.py
 import boto3
 import os
 from botocore.exceptions import ClientError
@@ -39,7 +38,6 @@ def s3_inspector_node(state: dict):
             sc = obj.get("StorageClass", "STANDARD")
             storage_classes[sc] = storage_classes.get(sc, 0) + 1
 
-    # Lifecycle rules
     try:
         resp = s3.get_bucket_lifecycle_configuration(Bucket=bucket)
         lifecycle_rules = resp.get("Rules", [])
@@ -57,7 +55,7 @@ def s3_inspector_node(state: dict):
         **state,
     }
 
-    print(f"✅ Inspected {bucket}: {object_count} objects, {total_size:,} bytes")
+    print(f" Inspected {bucket}: {object_count} objects, {total_size:,} bytes")
     print(f"Storage classes: {storage_classes}")
     print(f"Lifecycle rules: {len(lifecycle_rules)}")
 
