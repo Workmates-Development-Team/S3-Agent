@@ -1,4 +1,3 @@
-# new_folder/report_node.py
 import json
 
 
@@ -10,5 +9,5 @@ def report_node(state):
         "storage_classes": state["classes"],
         "lifecycle_rules": state["rules"],
     }
-    print(json.dumps(report, indent=2))  # Or save to file/CSV
+    print(json.dumps(report, indent=2))  
     return {"report": report, **state}

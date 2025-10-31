@@ -1,0 +1,32 @@
+{
+    "family": "s3-agent-manager-backend-task",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "512",
+    "memory": "1024",
+    "executionRoleArn": "arn:aws:iam::565741009456:role/ecsTaskExecutionRole",
+    "taskRoleArn": "arn:aws:iam::565741009456:role/ecsLanggraphTaskRole",
+    "containerDefinitions": [
+        {
+            "name": "s3-agent-manager-container",
+            "image": "565741009456.dkr.ecr.us-east-1.amazonaws.com/s3-agent-manager:latest",
+            "essential": true,
+            "portMappings": [
+                {
+                    "containerPort": 5000,
+                    "protocol": "tcp"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/s3-agent-manager",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            }
+        }
+    ]
+}

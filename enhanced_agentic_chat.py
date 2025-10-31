@@ -37,7 +37,6 @@ class EnhancedAgenticS3Chat:
         self.tools = self._define_tools()
         
     def _define_tools(self) -> List[Dict]:
-        """Define comprehensive S3 analytics tools."""
         return [
             {
                 "toolSpec": {
@@ -166,7 +165,6 @@ class EnhancedAgenticS3Chat:
         ]
     
     def _execute_tool(self, tool_name: str, tool_input: Dict) -> Any:
-        """Execute a tool and return the result."""
         try:
             if tool_name == "list_buckets":
                 response = self.s3.list_buckets()
@@ -227,14 +225,12 @@ class EnhancedAgenticS3Chat:
                 permissions = {}
                 
                 try:
-                    # Check bucket policy
                     policy = self.s3.get_bucket_policy(Bucket=bucket_name)
                     permissions["policy"] = "Has bucket policy"
                 except:
                     permissions["policy"] = "No bucket policy"
                 
                 try:
-                    # Check public access block
                     pab = self.s3.get_public_access_block(Bucket=bucket_name)
                     permissions["public_access_block"] = pab["PublicAccessBlockConfiguration"]
                 except:
@@ -372,7 +368,6 @@ class EnhancedAgenticS3Chat:
             return {"error": str(e)}
     
     def _format_size(self, bytes_size: int) -> str:
-        """Convert bytes to human-readable format."""
         if bytes_size == 0:
             return "0 bytes"
         
@@ -390,22 +385,18 @@ class EnhancedAgenticS3Chat:
             return f"{size:.1f} {units[unit_index]}"
 
     def _format_response(self, text: str) -> str:
-        """Remove markdown and format for display."""
         if not text:
             return text
         
-        # Remove all markdown formatting
         formatted = text.replace('**', '').replace('*', '')
         formatted = formatted.replace('__', '').replace('_', '')
         formatted = formatted.replace('###', '').replace('##', '').replace('#', '')
         formatted = formatted.replace('`', '').replace('~~', '')
         
-        # Convert newlines to HTML breaks
         formatted = formatted.replace('\n\n', '<br><br>').replace('\n', '<br>')
         return formatted
     
     def chat(self, query: str) -> str:
-        """Enhanced chat with tool calling capabilities."""
         if not self.model_id:
             return "Model not configured."
         
@@ -413,7 +404,6 @@ class EnhancedAgenticS3Chat:
         if not query:
             return "Please ask a question about your S3 buckets."
         
-        # Simple greeting
         greetings = ['hello', 'hi', 'hey']
         if any(greeting in query.lower() for greeting in greetings) and len(query.split()) <= 3:
             return "Hello! Ask me about your S3 needs"
@@ -438,10 +428,10 @@ RESPONSE STYLE:
 - Make it sound effortless and natural
 
 EXAMPLES:
-❌ BAD: "The analyze_bucket tool has provided information..."
-❌ BAD: "I should summarize this information..."
-✅ GOOD: "Here's your smallest bucket! It's 'my-tiny-bucket' with just 1.3 KB..."
-✅ GOOD: "Looking at your buckets, the largest one is 'prod-data' with 45 GB of storage..."
+  BAD: "The analyze_bucket tool has provided information..."
+  BAD: "I should summarize this information..."
+  GOOD: "Here's your smallest bucket! It's 'my-tiny-bucket' with just 1.3 KB..."
+  GOOD: "Looking at your buckets, the largest one is 'prod-data' with 45 GB of storage..."
 
 Question: {query}"""
                     }
@@ -479,7 +469,6 @@ Question: {query}"""
                     if answer and answer.strip():
                         return self._format_response(answer)
                     
-                    # If no answer, prompt for response
                     if iteration == 0:
                         messages.append({
                             "role": "user",
@@ -495,8 +484,7 @@ Question: {query}"""
                     
                     return "Unable to generate response."
                 
-                # Execute tools
-                print(f"🔧 Executing {len(tool_calls)} tools...")
+                print(f"Executing {len(tool_calls)} tools...")
                 tool_results = []
                 for tool_use in tool_calls:
                     try:
@@ -537,33 +525,32 @@ Question: {query}"""
             return "Service error. Please try again."
 
 def main():
-    """Interactive enhanced chat interface."""
-    print("🔧 Enhanced Agentic S3 Analytics Assistant")
+    print(" Enhanced Agentic S3 Analytics Assistant")
     print("Type 'quit' to exit.\n")
     
     try:
         chat = EnhancedAgenticS3Chat()
     except Exception as e:
-        print(f"❌ Failed to initialize: {e}")
+        print(f" Failed to initialize: {e}")
         return
     
     while True:
         try:
-            query = input("\n💬 You: ").strip()
+            query = input("\n You: ").strip()
             if query.lower() in ['quit', 'exit', 'q']:
                 break
                 
             if not query:
                 continue
                 
-            print("\n🤖 Assistant:", chat.chat(query))
+            print("\n Assistant:", chat.chat(query))
             
         except KeyboardInterrupt:
             break
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f" Error: {e}")
     
-    print("\n👋 Goodbye!")
+    print("\n Thank you, Goodbye!")
 
 if __name__ == "__main__":
     main()
