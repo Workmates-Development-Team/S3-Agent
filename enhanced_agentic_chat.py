@@ -34,6 +34,7 @@ class EnhancedAgenticS3Chat:
         )
         
         self.bucket_cache = {}
+        self.performance_stats = {"api_calls": 0, "cache_hits": 0}
         self.tools = self._define_tools()
         
     def _define_tools(self) -> List[Dict]:
@@ -80,6 +81,32 @@ class EnhancedAgenticS3Chat:
                             "required": ["pattern"]
                         }
                     }
+                }
+            },
+            {
+                "toolSpec": {
+                    "name": "batch_analyze_buckets",
+                    "description": "Analyze multiple buckets efficiently for comparison queries",
+                    "inputSchema": {
+                        "json": {
+                            "type": "object",
+                            "properties": {
+                                "analysis_type": {
+                                    "type": "string", 
+                                    "enum": ["size", "objects", "storage_classes"],
+                                    "description": "Type of analysis to perform"
+                                }
+                            },
+                            "required": ["analysis_type"]
+                        }
+                    }
+                }
+            },
+            {
+                "toolSpec": {
+                    "name": "compare_object_counts",
+                    "description": "Compare object counts across all buckets to find which has the most/least objects",
+                    "inputSchema": {"json": {"type": "object", "properties": {}}}
                 }
             },
             {
@@ -171,6 +198,44 @@ class EnhancedAgenticS3Chat:
                 buckets = [b["Name"] for b in response.get("Buckets", [])]
                 return {"buckets": buckets, "count": len(buckets)}
                 
+            elif tool_name == "batch_analyze_buckets":
+                analysis_type = tool_input["analysis_type"]
+                response = self.s3.list_buckets()
+                all_buckets = [b["Name"] for b in response.get("Buckets", [])]
+                
+                print(f"📊 Batch analyzing {len(all_buckets)} buckets for {analysis_type}...")
+                results = []
+                
+                for i, bucket in enumerate(all_buckets, 1):
+                    print(f"   Processing {bucket} ({i}/{len(all_buckets)})")
+                    
+                    if bucket in self.bucket_cache:
+                        self.performance_stats["cache_hits"] += 1
+                        report = self.bucket_cache[bucket]
+                    else:
+                        self.performance_stats["api_calls"] += 1
+                        result = app.invoke({"bucket": bucket})
+                        report = result.get("report", {})
+                        self.bucket_cache[bucket] = report
+                    
+                    if analysis_type == "size":
+                        results.append({"bucket": bucket, "size": report.get("total_size", 0)})
+                    elif analysis_type == "objects":
+                        results.append({"bucket": bucket, "object_count": report.get("object_count", 0)})
+                    elif analysis_type == "storage_classes":
+                        results.append({"bucket": bucket, "storage_classes": report.get("storage_classes", {})})
+                
+                
+                if analysis_type in ["size", "objects"]:
+                    key = "size" if analysis_type == "size" else "object_count"
+                    results.sort(key=lambda x: x[key], reverse=True)
+                
+                return {
+                    "analysis_type": analysis_type,
+                    "results": results,
+                    "performance": self.performance_stats
+                }
+                
             elif tool_name == "analyze_bucket":
                 bucket_name = tool_input["bucket_name"]
                 if bucket_name in self.bucket_cache:
@@ -197,6 +262,23 @@ class EnhancedAgenticS3Chat:
                 
                 bucket_sizes.sort(key=lambda x: x["size"], reverse=True)
                 return {"bucket_sizes": bucket_sizes}
+                
+            elif tool_name == "compare_object_counts":
+                response = self.s3.list_buckets()
+                all_buckets = [b["Name"] for b in response.get("Buckets", [])]
+                
+                bucket_objects = []
+                for bucket in all_buckets:
+                    if bucket not in self.bucket_cache:
+                        result = app.invoke({"bucket": bucket})
+                        self.bucket_cache[bucket] = result.get("report", {})
+                    
+                    report = self.bucket_cache[bucket]
+                    object_count = report.get("object_count", 0)
+                    bucket_objects.append({"bucket": bucket, "object_count": object_count})
+                
+                bucket_objects.sort(key=lambda x: x["object_count"], reverse=True)
+                return {"bucket_objects": bucket_objects}
                 
             elif tool_name == "search_buckets":
                 pattern = tool_input["pattern"].lower()
@@ -421,6 +503,13 @@ PERSONALITY:
 - Just provide the answer as if you already knew it
 - Use natural phrases like "I found", "Here's", "Looking at", "It appears"
 
+TOOL USAGE STRATEGY:
+- For questions about "which bucket has most/least objects" → use batch_analyze_buckets with analysis_type="objects"
+- For questions about "which bucket is largest/smallest" → use batch_analyze_buckets with analysis_type="size"
+- For storage class comparisons → use batch_analyze_buckets with analysis_type="storage_classes"
+- For single bucket questions → use analyze_bucket
+- For simple listing → use list_buckets
+
 RESPONSE STYLE:
 - Start directly with the answer
 - Use human-readable sizes (1.3 KB, 2.1 MB, 45 GB)
@@ -447,7 +536,7 @@ Question: {query}"""
                 inferenceConfig={"maxTokens": 1024, "temperature": 0.1}
             )
             
-            max_iterations = 3
+            max_iterations = 8
             iteration = 0
             
             while iteration < max_iterations:
@@ -484,10 +573,14 @@ Question: {query}"""
                     
                     return "Unable to generate response."
                 
-                print(f"Executing {len(tool_calls)} tools...")
+               
+                print(f" Executing {len(tool_calls)} tools...")
                 tool_results = []
+                successful_tools = 0
+                
                 for tool_use in tool_calls:
                     try:
+                        print(f"   → Running {tool_use['name']}...")
                         tool_result = self._execute_tool(tool_use["name"], tool_use["input"])
                         if tool_result and "error" not in tool_result:
                             tool_results.append({
@@ -496,12 +589,22 @@ Question: {query}"""
                                     "content": [{"json": tool_result}]
                                 }
                             })
+                            successful_tools += 1
+                            print(f"   ✅ {tool_use['name']} completed")
+                        else:
+                            print(f"   ❌ {tool_use['name']} returned error")
                     except Exception as e:
-                        print(f"Tool {tool_use['name']} failed: {e}")
+                        print(f"   ❌ {tool_use['name']} failed: {e}")
                         continue
                 
                 if not tool_results:
-                    return "Tool execution failed."
+                    if iteration < max_iterations - 1:
+                        print("⚠️  All tools failed, retrying...")
+                        iteration += 1
+                        continue
+                    return "Analysis failed. Please check your AWS credentials and permissions."
+                
+                print(f"✅ {successful_tools}/{len(tool_calls)} tools completed successfully")
                 
                 messages.append({"role": "user", "content": tool_results})
                 
@@ -518,7 +621,11 @@ Question: {query}"""
                 
                 iteration += 1
             
-            return "Analysis is complex. Please try a more specific question."
+            print(f"⚠️  Query exceeded {max_iterations} steps. This might be due to:")
+            print("   • Complex analysis requiring many bucket operations")
+            print("   • AWS API rate limiting")
+            print("   • Large number of buckets to analyze")
+            return "This analysis requires extensive bucket scanning. Try asking about specific buckets or use simpler queries like 'list my buckets' first."
                     
         except Exception as e:
             logger.error(f"Enhanced chat failed: {e}")
